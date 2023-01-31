@@ -107,6 +107,7 @@ class ChatViewController: UIViewController, UITableViewDelegate, UITableViewData
 			}
 			if selectedThread.recipients == [messageSender, messageSender] {
 				DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(2)) { [self] in
+					// Repeat adding of Message object, this time appearing as if it came from someone else.
 				let currentDatePlusAFewSeconds = Date()
 				let dataForSelfMessageEcho: [String : Any] = [
 					Constants.FStore.senderField : String(),
