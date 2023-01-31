@@ -89,18 +89,40 @@ class ChatViewController: UIViewController, UITableViewDelegate, UITableViewData
 		if let messageBody = messageTextfield?.text,
 		   let messageSender = Auth.auth().currentUser?.email {
 			let currentDate = Date()
-			let data: [String : Any] = [
+			guard let selectedThread = selectedThread else { return }
+			let dataForMessage: [String : Any] = [
 				Constants.FStore.senderField : messageSender,
 				Constants.FStore.bodyField : messageBody,
 				Constants.FStore.dateField : currentDate
 			]
-			database.collection(Constants.FStore.threadsCollectionName).document((selectedThread?.idString)!).collection(Constants.FStore.bubblesField).addDocument(data: data) { [self] error in
+			database.collection(Constants.FStore.threadsCollectionName).document((selectedThread.idString)).collection(Constants.FStore.bubblesField).addDocument(data: dataForMessage) { [self] error in
 				if let error = error {
 					AppDelegate.showError(error, inViewController: self)
 				} else {
-					database.collection(Constants.FStore.threadsCollectionName).document((selectedThread?.idString)!).updateData([Constants.FStore.dateField : Date()])
+					database.collection(Constants.FStore.threadsCollectionName).document((selectedThread.idString)).updateData([Constants.FStore.dateField : Date()])
 					DispatchQueue.main.async { [self] in
 						messageTextfield?.text?.removeAll()
+					}
+				}
+			}
+			if selectedThread.recipients == [messageSender, messageSender] {
+				DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(2)) { [self] in
+					// Repeat adding of Message object, this time appearing as if it came from someone else.
+				let currentDatePlusAFewSeconds = Date()
+				let dataForSelfMessageEcho: [String : Any] = [
+					Constants.FStore.senderField : String(),
+					Constants.FStore.bodyField : messageBody,
+					Constants.FStore.dateField : currentDatePlusAFewSeconds
+				]
+					database.collection(Constants.FStore.threadsCollectionName).document((selectedThread.idString)).collection(Constants.FStore.bubblesField).addDocument(data: dataForSelfMessageEcho) { [self] error in
+						if let error = error {
+							AppDelegate.showError(error, inViewController: self)
+						} else {
+							database.collection(Constants.FStore.threadsCollectionName).document((selectedThread.idString)).updateData([Constants.FStore.dateField : Date()])
+							DispatchQueue.main.async { [self] in
+								messageTextfield?.text?.removeAll()
+							}
+						}
 					}
 				}
 			}
