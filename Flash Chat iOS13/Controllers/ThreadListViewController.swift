@@ -33,6 +33,7 @@ class ThreadListViewController: UITableViewController {
 	}
 	
 	func loadThreads() {
+		// Add current user to users collection if it doesn't exist. Storing users as a collection allows checking to make sure new threads contain only registered recipients.
 		database.collection(Constants.FStore.usersCollectionName)
 			.whereField(Constants.FStore.emailField, isEqualTo: (Auth.auth().currentUser?.email)!)
 			.getDocuments { [self] snapshot, error in
@@ -56,11 +57,12 @@ class ThreadListViewController: UITableViewController {
 			.whereField(Constants.FStore.recipientsField, arrayContains: (Auth.auth().currentUser?.email)!)
 			.order(by: Constants.FStore.dateField, descending: true)
 			.addSnapshotListener { [self] (querySnapshot, error) in
-				threads = []
 				guard Auth.auth().currentUser != nil else { return }
 				if let error = error {
 					AppDelegate.showError(error, inViewController: self)
 				} else {
+					threads = []
+					tableView.reloadData()
 					if let snapshotDocuments = querySnapshot?.documents {
 						for doc in snapshotDocuments {
 							let data = doc.data()
@@ -223,6 +225,7 @@ class ThreadListViewController: UITableViewController {
 	}
 	
 	override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+		// Only go to the selected thread if it exists (i.e. hasn't been deleted from another app instance/device or Firebase).
 		selectedThread = threads[indexPath.row]
 		goToThread()
 	}
