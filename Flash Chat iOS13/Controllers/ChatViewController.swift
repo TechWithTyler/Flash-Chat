@@ -40,46 +40,65 @@ class ChatViewController: UIViewController, UITableViewDelegate, UITableViewData
 	}
 
 	func loadMessages(for thread: Thread) {
-		database.collection(Constants.FStore.threadsCollectionName).document((selectedThread?.idString)!).collection(Constants.FStore.bubblesField)
+		database.collection(Constants.FStore.threadsCollectionName)
 			.order(by: Constants.FStore.dateField, descending: false)
 			.addSnapshotListener { [self] (querySnapshot, error) in
-				messages = []
-				guard Auth.auth().currentUser != nil else { return }
-				if let error = error {
-					AppDelegate.showError(error, inViewController: self)
-				} else {
-					if let snapshotDocuments = querySnapshot?.documents {
-						for doc in snapshotDocuments {
-							let data = doc.data()
-							if let sender = data[Constants.FStore.senderField] as? String,
-							   let recipients = selectedThread?.recipients as? [String],
-							   let date = (data[Constants.FStore.dateField] as? Timestamp)?.dateValue() as? Date,
-							   let body = data[Constants.FStore.bodyField] as? String {
-								Task {
-									await AppDelegate.checkRecipientRegistrationStatus(recipients, inDatabase: database) { [self] registered, error in
-										if let error = error {
-											AppDelegate.showError(error, inViewController: self)
-										} else {
-											let newMessage = Message(sender: sender, date: date, body: body, idString: doc.documentID)
-											messages.append(newMessage)
-											DispatchQueue.main.async { [self] in
-												let indexPath = IndexPath(row: messages.count - 1, section: 0)
-												tableView?.reloadData()
-												tableView?.scrollToRow(at: indexPath, at: .top, animated: true)
-											}
-											if !registered {
-												let userNotRegistered = UIAlertController(title: "One or more recipients in this thread are no longer registered!", message: "This thread is read-only until they re-register.", preferredStyle: .alert)
-												let okAction = UIAlertAction(title: "OK", style: .default)
-												userNotRegistered.addAction(okAction)
-												present(userNotRegistered, animated: true)
-												messageTextfield?.isEnabled = false
-												sendButton?.isEnabled = false
+				if let snapshotDocuments = querySnapshot?.documents {
+					if snapshotDocuments.contains(where: {
+						document in
+						return document.documentID == selectedThread?.idString
+					}) {
+						database.collection(Constants.FStore.threadsCollectionName).document((selectedThread?.idString)!).collection(Constants.FStore.bubblesField)
+							.order(by: Constants.FStore.dateField, descending: false)
+							.addSnapshotListener { [self] (querySnapshot, error) in
+								guard Auth.auth().currentUser != nil else { return }
+								if let error = error {
+									AppDelegate.showError(error, inViewController: self)
+								} else {
+									messages = []
+									tableView?.reloadData()
+									if let snapshotDocuments = querySnapshot?.documents {
+										for doc in snapshotDocuments {
+											let data = doc.data()
+											if let sender = data[Constants.FStore.senderField] as? String,
+											   let recipients = selectedThread?.recipients as? [String],
+											   let date = (data[Constants.FStore.dateField] as? Timestamp)?.dateValue() as? Date,
+											   let body = data[Constants.FStore.bodyField] as? String {
+												Task {
+													await AppDelegate.checkRecipientRegistrationStatus(recipients, inDatabase: database) { [self] registered, error in
+														if let error = error {
+															AppDelegate.showError(error, inViewController: self)
+														} else {
+															let newMessage = Message(sender: sender, date: date, body: body, idString: doc.documentID)
+															messages.append(newMessage)
+															DispatchQueue.main.async { [self] in
+																let indexPath = IndexPath(row: messages.count - 1, section: 0)
+																tableView?.reloadData()
+																tableView?.scrollToRow(at: indexPath, at: .top, animated: true)
+															}
+															if !registered {
+																let userNotRegistered = UIAlertController(title: "One or more recipients in this thread are no longer registered!", message: "This thread is read-only until they re-register.", preferredStyle: .alert)
+																let okAction = UIAlertAction(title: "OK", style: .default)
+																userNotRegistered.addAction(okAction)
+																present(userNotRegistered, animated: true)
+																messageTextfield?.isEnabled = false
+																sendButton?.isEnabled = false
+															}
+														}
+													}
+												}
 											}
 										}
 									}
 								}
 							}
+					} else {
+						let deletedThread = UIAlertController(title: "The displayed thread has been deleted from another device.", message: nil, preferredStyle: .alert)
+						let okAction = UIAlertAction(title: "OK", style: .default) { action in
+							self.navigationController?.popViewController(animated: true)
 						}
+						deletedThread.addAction(okAction)
+						self.present(deletedThread, animated: true)
 					}
 				}
 			}
