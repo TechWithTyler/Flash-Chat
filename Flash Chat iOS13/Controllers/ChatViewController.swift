@@ -23,6 +23,8 @@ class ChatViewController: UIViewController, UITableViewDelegate, UITableViewData
 
 	var selectedThread: Thread? = nil
 
+	var userNotRegisteredPresented: Bool = false
+
 	let messagesForSelectedThread = Constants.FStore.messagesCollectionName
 
 	override func viewDidLoad() {
@@ -43,65 +45,63 @@ class ChatViewController: UIViewController, UITableViewDelegate, UITableViewData
 		database.collection(Constants.FStore.threadsCollectionName)
 			.order(by: Constants.FStore.dateField, descending: false)
 			.addSnapshotListener { [self] (querySnapshot, error) in
-				if let snapshotDocuments = querySnapshot?.documents {
-					if snapshotDocuments.contains(where: {
-						document in
-						return document.documentID == selectedThread?.idString
-					}) {
-						database.collection(Constants.FStore.threadsCollectionName).document((selectedThread?.idString)!).collection(Constants.FStore.bubblesField)
-							.order(by: Constants.FStore.dateField, descending: false)
-							.addSnapshotListener { [self] (querySnapshot, error) in
-								guard Auth.auth().currentUser != nil else { return }
-								if let error = error {
-									AppDelegate.showError(error, inViewController: self)
-								} else {
-									messages = []
-									tableView?.reloadData()
-									if let snapshotDocuments = querySnapshot?.documents {
-										for doc in snapshotDocuments {
-											let data = doc.data()
-											if let sender = data[Constants.FStore.senderField] as? String,
-											   let recipients = selectedThread?.recipients as? [String],
-											   let date = (data[Constants.FStore.dateField] as? Timestamp)?.dateValue() as? Date,
-											   let body = data[Constants.FStore.bodyField] as? String {
-												Task {
-													await AppDelegate.checkRecipientRegistrationStatus(recipients, inDatabase: database) { [self] registered, error in
-														if let error = error {
-															AppDelegate.showError(error, inViewController: self)
-														} else {
-															let newMessage = Message(sender: sender, date: date, body: body, idString: doc.documentID)
-															messages.append(newMessage)
-															DispatchQueue.main.async { [self] in
-																let indexPath = IndexPath(row: messages.count - 1, section: 0)
-																tableView?.reloadData()
-																tableView?.scrollToRow(at: indexPath, at: .top, animated: true)
-															}
-															if !registered {
-																let userNotRegistered = UIAlertController(title: "One or more recipients in this thread are no longer registered!", message: "This thread is read-only until they re-register.", preferredStyle: .alert)
-																let okAction = UIAlertAction(title: "OK", style: .default)
-																userNotRegistered.addAction(okAction)
-																present(userNotRegistered, animated: true)
-																messageTextfield?.isEnabled = false
-																sendButton?.isEnabled = false
-															}
-														}
-													}
-												}
-											}
-										}
-									}
-								}
-							}
-					} else {
-						let deletedThread = UIAlertController(title: "The displayed thread has been deleted from another device.", message: nil, preferredStyle: .alert)
-						let okAction = UIAlertAction(title: "OK", style: .default) { action in
-							self.navigationController?.popViewController(animated: true)
-						}
-						deletedThread.addAction(okAction)
-						self.present(deletedThread, animated: true)
+				guard let snapshotDocuments = querySnapshot?.documents,
+					  snapshotDocuments.contains(where: { document in
+						  document.documentID == selectedThread?.idString
+					  }),
+					  let selectedThreadID = selectedThread?.idString else { return }
+				loadBubbles(for: selectedThreadID)
+			}
+	}
+
+	func loadBubbles(for selectedThreadID: String) {
+		database.collection(Constants.FStore.threadsCollectionName).document(selectedThreadID).collection(Constants.FStore.bubblesField)
+			.order(by: Constants.FStore.dateField, descending: false)
+			.addSnapshotListener { [self] (querySnapshot, error) in
+				guard Auth.auth().currentUser != nil else { return }
+				if let error = error {
+					AppDelegate.showError(error, inViewController: self)
+				} else {
+					messages = []
+					tableView?.reloadData()
+					guard let snapshotDocuments = querySnapshot?.documents else { return }
+					for doc in snapshotDocuments {
+						let data = doc.data()
+						guard let sender = data[Constants.FStore.senderField] as? String,
+							  let recipients = selectedThread?.recipients as? [String],
+							  let date = (data[Constants.FStore.dateField] as? Timestamp)?.dateValue() as? Date,
+							  let body = data[Constants.FStore.bodyField] as? String else { continue }
+						checkRecipientStatusAndAddMessage(sender: sender, recipients: recipients, date: date, body: body, idString: doc.documentID)
 					}
 				}
 			}
+	}
+
+	func checkRecipientStatusAndAddMessage(sender: String, recipients: [String], date: Date, body: String, idString: String) {
+		Task {
+			await AppDelegate.checkRecipientRegistrationStatus(recipients, inDatabase: database) { [self] registered, error in
+				if let error = error {
+					AppDelegate.showError(error, inViewController: self)
+				} else {
+					let newMessage = Message(sender: sender, date: date, body: body, idString: idString)
+					messages.append(newMessage)
+					DispatchQueue.main.async { [self] in
+						let indexPath = IndexPath(row: messages.count - 1, section: 0)
+						tableView?.reloadData()
+						tableView?.scrollToRow(at: indexPath, at: .top, animated: true)
+					}
+					if !registered && !userNotRegisteredPresented {
+						let userNotRegistered = UIAlertController(title: "One or more recipients in this thread are no longer registered!", message: "You can't send new messages in this thread until they re-register.", preferredStyle: .alert)
+						let okAction = UIAlertAction(title: "OK", style: .default)
+						userNotRegistered.addAction(okAction)
+						present(userNotRegistered, animated: true)
+						userNotRegisteredPresented = true
+						messageTextfield?.isEnabled = false
+						sendButton?.isEnabled = false
+					}
+				}
+			}
+		}
 	}
 
 	@IBAction func sendPressed(_ sender: Any) {

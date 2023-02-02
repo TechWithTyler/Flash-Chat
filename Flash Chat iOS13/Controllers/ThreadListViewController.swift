@@ -202,7 +202,7 @@ class ThreadListViewController: UITableViewController {
 		let row = indexPath.row
 		var contentConfiguration = UIListContentConfiguration.cell()
 		var recipients = threads[row].recipients
-		if recipients.count == 2 && recipients.first == Auth.auth().currentUser?.email {
+		if recipients == [Auth.auth().currentUser?.email, Auth.auth().currentUser?.email] {
 			contentConfiguration.text = "Me"
 		} else {
 			recipients.removeAll { recipient in
