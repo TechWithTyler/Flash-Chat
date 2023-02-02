@@ -28,7 +28,8 @@ class ThreadListViewController: UITableViewController {
 	}
 
 	func configureNavigationBar() {
-		navigationItem.prompt = (Auth.auth().currentUser?.email)!
+		let userEmail = (Auth.auth().currentUser?.email)!
+		navigationItem.prompt = userEmail
 		navigationItem.hidesBackButton = true
 		navigationItem.leftBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "person.circle"), menu: optionsMenu)
 	}

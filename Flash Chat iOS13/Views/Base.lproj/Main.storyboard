@@ -372,7 +372,7 @@
                         <centerItemGroups>
                             <barButtonItemGroup customizationDisposition="fixed" id="FZW-O9-ff3"/>
                         </centerItemGroups>
-                        <barButtonItem key="rightBarButtonItem" systemItem="add" id="USN-HR-ahp">
+                        <barButtonItem key="rightBarButtonItem" systemItem="compose" id="USN-HR-ahp">
                             <connections>
                                 <action selector="addThread:" destination="7dJ-Sc-qNw" id="nbH-0p-fgd"/>
                             </connections>
@@ -392,7 +392,7 @@
                                 <action selector="logOutPressed:" destination="4xn-3H-f17" id="uVM-Tg-pwU"/>
                             </connections>
                         </command>
-                        <command title="Delete User" id="5Ef-6e-6mN">
+                        <command title="Delete User…" id="5Ef-6e-6mN">
                             <connections>
                                 <action selector="deleteUser:" destination="4xn-3H-f17" id="mLA-aB-AET"/>
                             </connections>
