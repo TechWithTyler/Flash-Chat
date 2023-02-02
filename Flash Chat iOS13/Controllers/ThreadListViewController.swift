@@ -33,55 +33,64 @@ class ThreadListViewController: UITableViewController {
 	}
 	
 	func loadThreads() {
-		// Add current user to users collection if it doesn't exist. Storing users as a collection allows checking to make sure new threads contain only registered recipients.
+		guard let currentUser = Auth.auth().currentUser, let email = currentUser.email else { return }
+		checkAndAddUser(email: email)
+		loadThreadsSnapshot(email: email)
+	}
+
+	private func checkAndAddUser(email: String) {
 		database.collection(Constants.FStore.usersCollectionName)
-			.whereField(Constants.FStore.emailField, isEqualTo: (Auth.auth().currentUser?.email)!)
+			.whereField(Constants.FStore.emailField, isEqualTo: email)
 			.getDocuments { [self] snapshot, error in
-				if let error = error {
-					AppDelegate.showError(error, inViewController: self)
-					return
-				} else {
+				guard let error = error else {
 					if (snapshot?.documents.isEmpty)! {
-						let data: [String : Any] = [
-							Constants.FStore.emailField : (Auth.auth().currentUser?.email)!
-						]
-						database.collection(Constants.FStore.usersCollectionName).addDocument(data: data) { [self] error in
-							if let error = error {
-								AppDelegate.showError(error, inViewController: self)
-							}
-						}
+						addUser(email: email)
 					}
+					return
 				}
+				AppDelegate.showError(error, inViewController: self)
 			}
+	}
+
+	private func addUser(email: String) {
+		let data: [String : Any] = [
+			Constants.FStore.emailField : email
+		]
+		database.collection(Constants.FStore.usersCollectionName).addDocument(data: data) { [self] error in
+			guard let error = error else { return }
+			AppDelegate.showError(error, inViewController: self)
+		}
+	}
+
+	private func loadThreadsSnapshot(email: String) {
 		database.collection(Constants.FStore.threadsCollectionName)
-			.whereField(Constants.FStore.recipientsField, arrayContains: (Auth.auth().currentUser?.email)!)
+			.whereField(Constants.FStore.recipientsField, arrayContains: email)
 			.order(by: Constants.FStore.dateField, descending: true)
 			.addSnapshotListener { [self] (querySnapshot, error) in
-				guard Auth.auth().currentUser != nil else { return }
-				if let error = error {
-					AppDelegate.showError(error, inViewController: self)
-				} else {
+				guard let error = error else {
 					threads = []
 					tableView.reloadData()
 					if let snapshotDocuments = querySnapshot?.documents {
-						for doc in snapshotDocuments {
+						threads = snapshotDocuments.compactMap { doc in
 							let data = doc.data()
-							if let recipients = data[Constants.FStore.recipientsField] as? [String],
-							   let date = (data[Constants.FStore.dateField] as? Timestamp)?.dateValue() as? Date,
-							   let bubbles = data[Constants.FStore.bubblesField] as? [Message] {
-								let newThread = Thread(idString: doc.documentID, date: date, recipients: recipients, messageBubbles: bubbles)
-								threads.append(newThread)
-								DispatchQueue.main.async { [self] in
-									let indexPath = IndexPath(row: threads.count - 1, section: 0)
-									tableView?.reloadData()
-									tableView?.scrollToRow(at: indexPath, at: .top, animated: true)
-								}
-							}
+							guard let recipients = data[Constants.FStore.recipientsField] as? [String],
+								  let date = (data[Constants.FStore.dateField] as? Timestamp)?.dateValue() as? Date,
+								  let bubbles = data[Constants.FStore.bubblesField] as? [Message] else { return nil }
+							return Thread(idString: doc.documentID, date: date, recipients: recipients, messageBubbles: bubbles)
+						}
+						DispatchQueue.main.async { [self] in
+							guard threads.count > 0 else { return }
+							let indexPath = IndexPath(row: threads.count - 1, section: 0)
+							tableView?.reloadData()
+							tableView?.scrollToRow(at: indexPath, at: .top, animated: true)
 						}
 					}
+					return
 				}
+				AppDelegate.showError(error, inViewController: self)
 			}
 	}
+
 	
 	@IBAction func addThread(_ sender: UIBarButtonItem) {
 		let alert = UIAlertController(title: "New Message", message: "Enter recipient email address. To message multiple recipients, enter their email addresses separated by a space (e.g. email@example.com email@example.com).", preferredStyle: .alert)
@@ -90,7 +99,12 @@ class ThreadListViewController: UITableViewController {
 		let addAction = UIAlertAction(title: "Add", style: .default) { [self] (action) in
 			guard let text = textField.text else { return }
 			if let messageSender = Auth.auth().currentUser?.email {
-				var recipients = text.components(separatedBy: " ")
+				var recipients: [String] = []
+				for recipient in text.components(separatedBy: " ") {
+					if !recipients.contains(recipient) {
+						recipients.append(recipient)
+					}
+				}
 				recipients.append(messageSender)
 				Task {
 					await AppDelegate.checkRecipientRegistrationStatus(recipients, inDatabase: database) { [self] registered, error in
